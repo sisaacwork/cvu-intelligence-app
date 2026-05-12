@@ -156,21 +156,32 @@ with st.sidebar:
 
     st.divider()
     st.header("Database credentials")
+    # Re-seed session_state for any DB field that is currently empty when
+    # the env (or st.secrets) has a real value. This makes "I just added
+    # secrets and reloaded" pick up the new values, instead of permanently
+    # caching the empty initial render.
+    for _k in (
+        "mysql_host", "mysql_port", "mysql_user", "mysql_password", "mysql_database",
+        "pg_host", "pg_port", "pg_user", "pg_password", "pg_database",
+    ):
+        if not st.session_state.get(_k) and DEFAULTS.get(_k):
+            st.session_state[_k] = DEFAULTS[_k]
+
     with st.expander("MySQL (CVU)", expanded=False):
         mysql_cfg = {
-            "host":     st.text_input("Host",     DEFAULTS["mysql_host"],     key="mysql_host"),
-            "port":     st.text_input("Port",     DEFAULTS["mysql_port"],     key="mysql_port"),
-            "user":     st.text_input("User",     DEFAULTS["mysql_user"],     key="mysql_user"),
-            "password": st.text_input("Password", DEFAULTS["mysql_password"], type="password", key="mysql_password"),
-            "database": st.text_input("Database", DEFAULTS["mysql_database"], key="mysql_database"),
+            "host":     st.text_input("Host",     key="mysql_host"),
+            "port":     st.text_input("Port",     key="mysql_port"),
+            "user":     st.text_input("User",     key="mysql_user"),
+            "password": st.text_input("Password", key="mysql_password", type="password"),
+            "database": st.text_input("Database", key="mysql_database"),
         }
     with st.expander("Postgres (VUI)", expanded=False):
         pg_cfg = {
-            "host":     st.text_input("Host",     DEFAULTS["pg_host"],     key="pg_host"),
-            "port":     st.text_input("Port",     DEFAULTS["pg_port"],     key="pg_port"),
-            "user":     st.text_input("User",     DEFAULTS["pg_user"],     key="pg_user"),
-            "password": st.text_input("Password", DEFAULTS["pg_password"], type="password", key="pg_password"),
-            "database": st.text_input("Database", DEFAULTS["pg_database"], key="pg_database"),
+            "host":     st.text_input("Host",     key="pg_host"),
+            "port":     st.text_input("Port",     key="pg_port"),
+            "user":     st.text_input("User",     key="pg_user"),
+            "password": st.text_input("Password", key="pg_password", type="password"),
+            "database": st.text_input("Database", key="pg_database"),
         }
 
 
