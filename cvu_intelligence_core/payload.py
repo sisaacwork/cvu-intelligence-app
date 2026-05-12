@@ -7,7 +7,7 @@ contract stays decoupled from the column order in the CTBUH MySQL.
 
 WordPress publish-route contract (mirrors intelligence-admin.php):
     {
-      "tier":       "brief" | "report",
+      "tier":       "snapshot" | "report",
       "geo_type":   "agglomeration" | "region" | "country" | "city",
       "geo_name":   "Chicago–Milwaukee Agglomeration",
       "geo_ids":    [12, 47],
@@ -113,8 +113,8 @@ def teams_to_dicts(teams, team_builds):
 def build_publish_payload(*, tier, geo_type, geo_name, geo_ids, min_height,
                           buildings, teams, team_builds, ghsl, boundary):
     """Assemble the final dict POSTed to /mds/v1/intelligence/publish."""
-    if tier not in ("brief", "report"):
-        raise ValueError(f"tier must be 'brief' or 'report', got {tier!r}")
+    if tier not in ("snapshot", "report"):
+        raise ValueError(f"tier must be 'snapshot' or 'report', got {tier!r}")
     return {
         "tier":       tier,
         "geo_type":   geo_type,

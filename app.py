@@ -271,16 +271,22 @@ else:
 
 
 st.header("2. Output")
-col_excel, col_brief, col_report, col_height = st.columns([1, 1, 1, 2])
-with col_excel:
-    do_excel = st.checkbox(
-        "Excel Brief", value=False,
+col_brief, col_snapshot, col_report, col_height = st.columns([1, 1, 1, 2])
+with col_brief:
+    do_brief = st.checkbox(
+        "Intelligence Brief", value=False,
         help="Tier 1 — downloadable .xlsx of the building list. Does not get published to WordPress.",
     )
-with col_brief:
-    do_brief = st.checkbox("Intelligence Brief", value=False, help="Tier 2 — published as a WP draft.")
+with col_snapshot:
+    do_snapshot = st.checkbox(
+        "Intelligence Snapshot", value=False,
+        help="Tier 2 — published as a WordPress draft.",
+    )
 with col_report:
-    do_report = st.checkbox("Intelligence Report", value=True, help="Tier 3 — published as a WP draft.")
+    do_report = st.checkbox(
+        "Intelligence Report", value=True,
+        help="Tier 3 — published as a WordPress draft.",
+    )
 with col_height:
     min_height = st.number_input("Minimum building height (m)", min_value=0, value=75, step=25)
     st.session_state["min_height"] = min_height
@@ -291,10 +297,10 @@ with col_height:
 # ---------------------------------------------------------------------------
 st.header("3. Generate")
 
-_needs_wp = bool(do_brief or do_report)
+_needs_wp = bool(do_snapshot or do_report)
 can_generate = bool(
     selected_geos
-    and (do_brief or do_report or do_excel)
+    and (do_brief or do_snapshot or do_report)
     and mysql_cfg.get("password")
     and (not _needs_wp or logged_in)
     and (not _needs_wp or pg_cfg.get("password"))
@@ -306,7 +312,7 @@ go = st.button(
     use_container_width=False,
     help=(None if can_generate else
           "Pick a geography, choose at least one output, and fill in DB passwords. "
-          "WP login + Postgres are required only when publishing a Brief or Report."),
+          "WP login + VUI Postgres are required only when publishing a Snapshot or Report."),
 )
 
 
@@ -325,8 +331,8 @@ def _run_generation():
     geo_names = [g["name"] for g in selected_geos]
     report_name = _combined_geo_name(selected_geos)
     tiers = []
-    if do_brief:  tiers.append("brief")
-    if do_report: tiers.append("report")
+    if do_snapshot: tiers.append("snapshot")
+    if do_report:   tiers.append("report")
     needs_wp = bool(tiers)
 
     log_buf = io.StringIO()
@@ -335,9 +341,9 @@ def _run_generation():
         log_area.code(log_buf.getvalue(), language="text")
 
     outputs_summary = []
-    if do_excel: outputs_summary.append("Excel")
-    if do_brief: outputs_summary.append("Brief")
-    if do_report: outputs_summary.append("Report")
+    if do_brief:    outputs_summary.append("Brief")
+    if do_snapshot: outputs_summary.append("Snapshot")
+    if do_report:   outputs_summary.append("Report")
 
     log(f"=== Generating for: {report_name} ===")
     log(f"  geo_type={geo_type}, ids={geo_ids}")
@@ -375,16 +381,16 @@ def _run_generation():
                 st.error(f"Postgres failed: {e}")
                 return
 
-        # --- Excel Brief (local download, never sent to WP) ---
+        # --- Intelligence Brief / Tier 1 (local Excel download, not published to WP) ---
         excel_bytes = None
-        if do_excel:
-            log("Building Excel Brief…")
+        if do_brief:
+            log("Building Intelligence Brief (Excel)…")
             try:
                 excel_bytes = core.generate_excel_brief(buildings, report_name, min_height)
                 log(f"  ✓ Excel ready ({len(excel_bytes):,} bytes)")
             except Exception as e:  # noqa: BLE001
-                log(f"  ✗ Excel build failed: {e}")
-                st.error(f"Excel build failed: {e}")
+                log(f"  ✗ Brief build failed: {e}")
+                st.error(f"Brief build failed: {e}")
 
         # --- WordPress publish (Brief / Report) ---
         results = []
@@ -425,7 +431,7 @@ def _run_generation():
 
     if excel_bytes:
         st.download_button(
-            label=f"📥 Download Excel Brief — {report_name}",
+            label=f"📥 Download Intelligence Brief — {report_name}",
             data=excel_bytes,
             file_name=core.excel_filename(report_name),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
