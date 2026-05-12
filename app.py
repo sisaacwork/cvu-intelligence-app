@@ -17,6 +17,7 @@ selecting multiple geos produces a single report with all of them merged.
 
 from __future__ import annotations
 
+import hmac
 import io
 import os
 from contextlib import redirect_stdout
@@ -58,6 +59,32 @@ DEFAULTS = {
 # Page setup
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="CVU Intelligence", page_icon="📊", layout="wide")
+
+
+# ---------------------------------------------------------------------------
+# App password gate
+# ---------------------------------------------------------------------------
+# Soft gate against casual access. Per-browser-session only — closing the tab
+# requires re-entry. NOT a security boundary; the real auth happens on the
+# WordPress side via app passwords. Set APP_PASSWORD in .env to override.
+APP_PASSWORD = env("APP_PASSWORD", "rtl2026")
+
+if not st.session_state.get("gate_authed"):
+    st.title("CVU Intelligence")
+    st.caption("Restricted — enter the access password to continue.")
+    with st.form("gate_form", clear_on_submit=False):
+        pw_attempt = st.text_input("Password", type="password", label_visibility="collapsed",
+                                   placeholder="Password")
+        unlock = st.form_submit_button("Unlock")
+    if unlock:
+        if hmac.compare_digest(pw_attempt, APP_PASSWORD):
+            st.session_state["gate_authed"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+
+
 st.title("CVU Intelligence Generator")
 st.caption(
     "Pull building + GHSL data and publish a draft Intelligence Brief or "
