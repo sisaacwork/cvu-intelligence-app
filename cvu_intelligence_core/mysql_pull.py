@@ -63,6 +63,7 @@ def pull_mysql_data(cfg, geo_type, geo_ids, log=print, min_height=75):
       AND b.deleted_at IS NULL
       AND b.structure_type = 'building'
       AND b.height_architecture >= %s
+      AND b.status NOT IN ('VIS')
     ORDER BY b.height_architecture DESC
     """
     cur.execute(sql, geo_params + [min_height])
