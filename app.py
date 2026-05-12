@@ -271,11 +271,16 @@ else:
 
 
 st.header("2. Output")
-col_brief, col_report, col_height = st.columns([1, 1, 2])
+col_excel, col_brief, col_report, col_height = st.columns([1, 1, 1, 2])
+with col_excel:
+    do_excel = st.checkbox(
+        "Excel Brief", value=False,
+        help="Tier 1 — downloadable .xlsx of the building list. Does not get published to WordPress.",
+    )
 with col_brief:
-    do_brief = st.checkbox("Intelligence Brief", value=False, help="Tier 2 — Snapshot")
+    do_brief = st.checkbox("Intelligence Brief", value=False, help="Tier 2 — published as a WP draft.")
 with col_report:
-    do_report = st.checkbox("Intelligence Report", value=True, help="Tier 3 — Full")
+    do_report = st.checkbox("Intelligence Report", value=True, help="Tier 3 — published as a WP draft.")
 with col_height:
     min_height = st.number_input("Minimum building height (m)", min_value=0, value=75, step=25)
     st.session_state["min_height"] = min_height
@@ -286,20 +291,22 @@ with col_height:
 # ---------------------------------------------------------------------------
 st.header("3. Generate")
 
+_needs_wp = bool(do_brief or do_report)
 can_generate = bool(
-    logged_in
-    and selected_geos
-    and (do_brief or do_report)
+    selected_geos
+    and (do_brief or do_report or do_excel)
     and mysql_cfg.get("password")
-    and pg_cfg.get("password")
+    and (not _needs_wp or logged_in)
+    and (not _needs_wp or pg_cfg.get("password"))
 )
 go = st.button(
-    "Generate drafts",
+    "Generate",
     type="primary",
     disabled=not can_generate,
     use_container_width=False,
     help=(None if can_generate else
-          "Log in to WP, pick at least one geography, choose a tier, and fill in DB passwords."),
+          "Pick a geography, choose at least one output, and fill in DB passwords. "
+          "WP login + Postgres are required only when publishing a Brief or Report."),
 )
 
 
@@ -313,22 +320,28 @@ def _combined_geo_name(geos):
 
 
 def _run_generation():
-    """Execute the full pipeline: pull → build payload → POST per tier."""
+    """Execute the pipeline: MySQL pull → optional Excel build → optional WP publish."""
     geo_ids = [g["id"] for g in selected_geos]
     geo_names = [g["name"] for g in selected_geos]
     report_name = _combined_geo_name(selected_geos)
     tiers = []
     if do_brief:  tiers.append("brief")
     if do_report: tiers.append("report")
+    needs_wp = bool(tiers)
 
     log_buf = io.StringIO()
     def log(msg):
         log_buf.write(str(msg) + "\n")
         log_area.code(log_buf.getvalue(), language="text")
 
+    outputs_summary = []
+    if do_excel: outputs_summary.append("Excel")
+    if do_brief: outputs_summary.append("Brief")
+    if do_report: outputs_summary.append("Report")
+
     log(f"=== Generating for: {report_name} ===")
     log(f"  geo_type={geo_type}, ids={geo_ids}")
-    log(f"  tiers={tiers}, min_height={min_height}")
+    log(f"  outputs={outputs_summary}, min_height={min_height}")
 
     with st.status("Pulling MySQL data…", expanded=True) as status:
         try:
@@ -340,60 +353,87 @@ def _run_generation():
             st.error(f"MySQL failed: {e}")
             return
 
-        log("Building boundary config…")
-        try:
-            boundary = core.build_boundary_config(
-                country_city_map, geo_type, geo_names, log,
-            )
-        except Exception as e:  # noqa: BLE001
-            log(f"  Boundary failed (continuing without overlay): {e}")
-            boundary = []
+        ghsl = None
+        boundary = []
+        if needs_wp:
+            log("Building boundary config…")
+            try:
+                boundary = core.build_boundary_config(
+                    country_city_map, geo_type, geo_names, log,
+                )
+            except Exception as e:  # noqa: BLE001
+                log(f"  Boundary failed (continuing without overlay): {e}")
+                boundary = []
 
-        log("Pulling VUI data…")
-        try:
-            ghsl = core.pull_ghsl_data(
-                pg_cfg, geo_type, geo_ids, geo_names, mysql_cfg, log,
-            )
-        except Exception as e:  # noqa: BLE001
-            status.update(label=f"Postgres failed: {e}", state="error")
-            st.error(f"Postgres failed: {e}")
-            return
+            log("Pulling VUI data…")
+            try:
+                ghsl = core.pull_ghsl_data(
+                    pg_cfg, geo_type, geo_ids, geo_names, mysql_cfg, log,
+                )
+            except Exception as e:  # noqa: BLE001
+                status.update(label=f"Postgres failed: {e}", state="error")
+                st.error(f"Postgres failed: {e}")
+                return
 
-        status.update(label="Publishing to WordPress…", state="running")
-        wp_client = WPClient(
-            st.session_state["wp_base_url"],
-            st.session_state["wp_username"],
-            st.session_state["wp_app_password"],
-            timeout=120,
+        # --- Excel Brief (local download, never sent to WP) ---
+        excel_bytes = None
+        if do_excel:
+            log("Building Excel Brief…")
+            try:
+                excel_bytes = core.generate_excel_brief(buildings, report_name, min_height)
+                log(f"  ✓ Excel ready ({len(excel_bytes):,} bytes)")
+            except Exception as e:  # noqa: BLE001
+                log(f"  ✗ Excel build failed: {e}")
+                st.error(f"Excel build failed: {e}")
+
+        # --- WordPress publish (Brief / Report) ---
+        results = []
+        if needs_wp:
+            status.update(label="Publishing to WordPress…", state="running")
+            wp_client = WPClient(
+                st.session_state["wp_base_url"],
+                st.session_state["wp_username"],
+                st.session_state["wp_app_password"],
+                timeout=120,
+            )
+            for tier in tiers:
+                log(f"Publishing tier={tier}…")
+                payload = core.build_publish_payload(
+                    tier=tier,
+                    geo_type=geo_type,
+                    geo_name=report_name,
+                    geo_ids=geo_ids,
+                    min_height=min_height,
+                    buildings=buildings,
+                    teams=teams,
+                    team_builds=team_builds,
+                    ghsl=ghsl,
+                    boundary=boundary,
+                )
+                try:
+                    resp = wp_client.publish(payload)
+                    results.append(resp)
+                    log(f"  ✓ post_id={resp['post_id']} slug={resp['slug']}")
+                except WPClientError as e:
+                    log(f"  ✗ {tier} publish failed: {e}")
+                    st.error(f"{tier} publish failed: {e}")
+
+        status.update(
+            label=f"Done — created {len(results)} draft(s)" + (", Excel ready" if excel_bytes else "") + ".",
+            state="complete",
         )
 
-        results = []
-        for tier in tiers:
-            log(f"Publishing tier={tier}…")
-            payload = core.build_publish_payload(
-                tier=tier,
-                geo_type=geo_type,
-                geo_name=report_name,
-                geo_ids=geo_ids,
-                min_height=min_height,
-                buildings=buildings,
-                teams=teams,
-                team_builds=team_builds,
-                ghsl=ghsl,
-                boundary=boundary,
-            )
-            try:
-                resp = wp_client.publish(payload)
-                results.append(resp)
-                log(f"  ✓ post_id={resp['post_id']} slug={resp['slug']}")
-            except WPClientError as e:
-                log(f"  ✗ {tier} publish failed: {e}")
-                st.error(f"{tier} publish failed: {e}")
-
-        status.update(label=f"Done — created {len(results)} draft(s).", state="complete")
+    if excel_bytes:
+        st.download_button(
+            label=f"📥 Download Excel Brief — {report_name}",
+            data=excel_bytes,
+            file_name=core.excel_filename(report_name),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+        )
 
     if results:
-        st.success(f"Created **{len(results)}** draft(s).")
+        st.success(f"Created **{len(results)}** draft(s) in WordPress.")
         for r in results:
             tier_label = r.get("tier", "?").title()
             geo = r.get("geo_name", "?")

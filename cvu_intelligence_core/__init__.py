@@ -16,6 +16,7 @@ from .ghsl_pull import pull_ghsl_data
 from .boundary import build_boundary_config
 from .payload import buildings_to_dicts, teams_to_dicts, build_publish_payload
 from .wp_client import WPClient
+from .excel_export import generate_excel_brief, excel_filename
 
 __all__ = [
     "STATUS_MAP",
@@ -31,4 +32,6 @@ __all__ = [
     "teams_to_dicts",
     "build_publish_payload",
     "WPClient",
+    "generate_excel_brief",
+    "excel_filename",
 ]
