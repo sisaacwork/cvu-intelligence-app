@@ -35,6 +35,18 @@ from cvu_intelligence_core.wp_client import WPClient, WPClientError
 # ---------------------------------------------------------------------------
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
+# Bridge: when running on Streamlit Cloud (or any host that injects values
+# via st.secrets), copy them into os.environ so the rest of the codebase
+# keeps reading os.environ uniformly. No-op locally when no secrets.toml
+# is present — Streamlit raises in that case and we swallow it.
+try:
+    _secrets = dict(st.secrets)
+    for _k, _v in _secrets.items():
+        if isinstance(_v, (str, int, float, bool)):
+            os.environ[_k] = str(_v)
+except Exception:  # noqa: BLE001 — Streamlit raises different exception types across versions
+    pass
+
 
 def env(key, default=""):
     return os.environ.get(key, default) or ""
@@ -96,7 +108,15 @@ st.caption(
 # Sidebar: WordPress login + DB credentials
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    section = st.radio(
+        "View",
+        options=["Generator", "Setup Instructions"],
+        index=0,
+        label_visibility="collapsed",
+    )
+    st.divider()
     st.header("WordPress")
+
     wp_base_url = st.text_input(
         "Base URL",
         value=st.session_state.get("wp_base_url", DEFAULTS["wp_base_url"]),
@@ -151,6 +171,39 @@ with st.sidebar:
             "password": st.text_input("Password", DEFAULTS["pg_password"], type="password", key="pg_password"),
             "database": st.text_input("Database", DEFAULTS["pg_database"], key="pg_database"),
         }
+
+
+# ---------------------------------------------------------------------------
+# Setup Instructions view
+# ---------------------------------------------------------------------------
+if section == "Setup Instructions":
+    st.title("Setup Instructions")
+    st.markdown(
+        "### 1. Generate a WordPress application password\n\n"
+        "1. Log into "
+        "[verticalurbanism.org/wp-admin](https://verticalurbanism.org/wp-admin/).\n"
+        "2. Click **Profile** in the WordPress sidebar.\n"
+        "3. Scroll to the bottom of the page to the **Application Passwords** section.\n"
+        "4. Enter `Intelligence Admin` as the name and click "
+        "**Add New Application Password**.\n"
+        "5. **Save the generated password somewhere safe** — WordPress will not "
+        "show it to you again.\n\n"
+        "### 2. Log into this app\n\n"
+        "Use the **WordPress** section in the sidebar:\n\n"
+        "- **Username:** your WordPress username (first initial + last name, "
+        "e.g. `iwork`).\n"
+        "- **Password:** the application password you just generated.\n\n"
+        "### 3. Database credentials\n\n"
+        "Database credentials are pre-filled and hidden under "
+        "**Database credentials → MySQL / Postgres** in the sidebar. "
+        "You don't need to touch them.\n\n"
+        "### Not sure which product you need?\n\n"
+        "See the "
+        "[Intelligence overview]"
+        "(https://verticalurbanism.org/resources/research/intelligence/) "
+        "for the difference between an Intelligence Brief and a Report."
+    )
+    st.stop()
 
 
 # ---------------------------------------------------------------------------
