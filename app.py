@@ -83,7 +83,7 @@ APP_PASSWORD = env("APP_PASSWORD", "rtl2026")
 
 if not st.session_state.get("gate_authed"):
     st.title("CVU Intelligence")
-    st.caption("Restricted — enter the access password to continue.")
+    st.caption("Restricted: Enter the access password to continue.")
     with st.form("gate_form", clear_on_submit=False):
         pw_attempt = st.text_input("Password", type="password", label_visibility="collapsed",
                                    placeholder="Password")
@@ -99,7 +99,7 @@ if not st.session_state.get("gate_authed"):
 
 st.title("CVU Intelligence Generator")
 st.caption(
-    "Pull building + GHSL data and publish a draft Intelligence Brief or "
+    "Pull Tall building + VUI data and publish a draft Intelligence Brief or "
     "Report to WordPress for editor review."
 )
 
@@ -124,12 +124,13 @@ with st.sidebar:
     wp_username = st.text_input(
         "Username",
         value=st.session_state.get("wp_username", ""),
-        placeholder="iwork",
+        placeholder="first initial + last name",
     )
     wp_app_password = st.text_input(
         "Application password",
         type="password",
         value=st.session_state.get("wp_app_password", ""),
+        placeholder="Click Setup Instructions above to initialize",
         help="Generate at /wp-admin/profile.php → Application Passwords.",
     )
 
@@ -155,7 +156,7 @@ with st.sidebar:
 
     st.divider()
     st.header("Database credentials")
-    with st.expander("MySQL (CTBUH)", expanded=False):
+    with st.expander("MySQL (CVU)", expanded=False):
         mysql_cfg = {
             "host":     st.text_input("Host",     DEFAULTS["mysql_host"],     key="mysql_host"),
             "port":     st.text_input("Port",     DEFAULTS["mysql_port"],     key="mysql_port"),
@@ -163,7 +164,7 @@ with st.sidebar:
             "password": st.text_input("Password", DEFAULTS["mysql_password"], type="password", key="mysql_password"),
             "database": st.text_input("Database", DEFAULTS["mysql_database"], key="mysql_database"),
         }
-    with st.expander("Postgres (Aiven / GHSL)", expanded=False):
+    with st.expander("Postgres (VUI)", expanded=False):
         pg_cfg = {
             "host":     st.text_input("Host",     DEFAULTS["pg_host"],     key="pg_host"),
             "port":     st.text_input("Port",     DEFAULTS["pg_port"],     key="pg_port"),
@@ -211,7 +212,7 @@ if section == "Setup Instructions":
 # ---------------------------------------------------------------------------
 logged_in = bool(st.session_state.get("wp_me"))
 if not logged_in:
-    st.info("👈 Log in to WordPress in the sidebar to enable generation.")
+    st.info("Log in to WordPress in the sidebar to enable generation.")
 
 st.header("1. Geography")
 col_type, col_btn = st.columns([2, 1])
@@ -255,7 +256,7 @@ if geo_list:
     selected_geos = [options[lbl] for lbl in selected_labels]
 else:
     selected_geos = []
-    st.caption("No list loaded yet — click **Load list** above.")
+    st.caption("No list loaded yet. Click **Load list** above.")
 
 
 st.header("2. Output")
@@ -265,7 +266,7 @@ with col_brief:
 with col_report:
     do_report = st.checkbox("Intelligence Report", value=True, help="Tier 3 — Full")
 with col_height:
-    min_height = st.number_input("Minimum building height (m)", min_value=0, value=75, step=5)
+    min_height = st.number_input("Minimum building height (m)", min_value=0, value=75, step=25)
     st.session_state["min_height"] = min_height
 
 
@@ -337,7 +338,7 @@ def _run_generation():
             log(f"  Boundary failed (continuing without overlay): {e}")
             boundary = []
 
-        log("Pulling GHSL data…")
+        log("Pulling VUI data…")
         try:
             ghsl = core.pull_ghsl_data(
                 pg_cfg, geo_type, geo_ids, geo_names, mysql_cfg, log,
