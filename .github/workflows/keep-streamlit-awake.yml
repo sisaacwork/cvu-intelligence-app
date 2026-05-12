@@ -1,0 +1,30 @@
+name: Keep Streamlit app awake
+
+on:
+  schedule:
+    # Every 6 hours, at :17 to dodge the top-of-hour GitHub Actions queue spike.
+    - cron: "29 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping cvu-intelligence.streamlit.app
+        # Don't follow redirects — Streamlit Cloud's wake-up flow bounces in a
+        # loop that exceeds curl's redirect cap. A single GET is enough to
+        # register activity and keep the app from going idle; any 2xx or 3xx
+        # response means the request reached Streamlit.
+        run: |
+          status=$(curl --silent --show-error \
+                       --retry 5 --retry-all-errors --retry-delay 10 \
+                       --max-time 30 \
+                       --user-agent "github-actions-keepalive" \
+                       -o /dev/null -w "%{http_code}" \
+                       https://cvu-rtl.streamlit.app)
+          echo "HTTP $status"
+          case "$status" in
+            2??|3??) exit 0 ;;
+            *)       exit 1 ;;
+          esac
